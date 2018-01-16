@@ -94,15 +94,17 @@ func ferry(client, server net.Conn) {
 }
 
 func main() {
-	listener, e := net.Listen("tcp4", "127.0.0.1:17649")
+	listener, e := net.Listen("tcp", "127.0.0.1:17649")
 	if e != nil {
 		log.Fatalln("ERROR", e)
 	}
+	log.Println("INFO", "Listening on", listener.Addr().String())
 	for {
 		client, e := listener.Accept()
 		if e != nil {
 			log.Println("ERROR", e)
 		}
+		log.Println("INFO", "Connection from", client.RemoteAddr().String())
 		server, e := dialFreenode()
 		if e != nil {
 			log.Println("ERROR", e)
