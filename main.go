@@ -9,7 +9,8 @@ import (
 func dialFreenode() (net.Conn, error) {
 	conn, e := dialSocks5("127.0.0.1:9050", "freenodeok2gncmy.onion:6697")
 	if e != nil {
-		log.Fatalln("ERROR", e)
+		conn.Close()
+		return conn, e
 	}
 	cfg := &tls.Config{
 		ServerName:   "zettel.freenode.net",
@@ -103,11 +104,14 @@ func main() {
 		client, e := listener.Accept()
 		if e != nil {
 			log.Println("ERROR", e)
+			continue
 		}
 		log.Println("INFO", "Connection from", client.RemoteAddr().String())
 		server, e := dialFreenode()
 		if e != nil {
 			log.Println("ERROR", e)
+			client.Close()
+			continue
 		}
 		go ferry(client, server)
 	}
