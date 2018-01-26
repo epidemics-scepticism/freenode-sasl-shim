@@ -14,7 +14,7 @@ func dialFreenode() (*textproto.Conn, error) {
 		return nil, e
 	}
 	cfg := &tls.Config{
-		ServerName:   "zettel.freenode.net",
+		ServerName: "zettel.freenode.net",
 	}
 	sasl, e := tls.LoadX509KeyPair("sasl.crt", "sasl.key")
 	if e != nil {
@@ -39,8 +39,10 @@ func dialFreenode() (*textproto.Conn, error) {
 			cert.Issuer.CommonName,
 		)
 	}
-	_, e = conn.Writer.W.WriteString("CAP REQ :sasl\r\nAUTHENTICATE EXTERNAL\r\nAUTHENTICATE +\r\nCAP END\r\n")
-	if e != nil {
+	if conn.PrintfLine("%s", "CAP REQ :sasl") != nil ||
+		conn.PrintfLine("%s", "AUTHENTICATE EXTERNAL") != nil ||
+		conn.PrintfLine("%s", "AUTHENTICATE +") != nil ||
+		conn.PrintfLine("%s", "CAP END") != nil {
 		log.Println("ERROR", e)
 		conn.Close()
 		return nil, e
