@@ -4,30 +4,31 @@ import (
 	"crypto/tls"
 	"log"
 	"net"
+	"net/textproto"
 )
 
-func dialFreenode() (net.Conn, error) {
-	conn, e := dialSocks5("127.0.0.1:9050", "freenodeok2gncmy.onion:6697")
+func dialFreenode() (*textproto.Conn, error) {
+	socksConn, e := dialSocks5("127.0.0.1:9050", "freenodeok2gncmy.onion:6697")
 	if e != nil {
-		conn.Close()
-		return conn, e
+		socksConn.Close()
+		return nil, e
 	}
 	cfg := &tls.Config{
 		ServerName:   "zettel.freenode.net",
 	}
 	sasl, e := tls.LoadX509KeyPair("sasl.crt", "sasl.key")
 	if e != nil {
-		conn.Close()
-		return conn, e
+		socksConn.Close()
+		return nil, e
 	}
 	cfg.Certificates = []tls.Certificate{sasl}
-	tconn := tls.Client(conn, cfg)
-	if e := tconn.Handshake(); e != nil {
-		conn.Close()
-		return conn, e
+	tlsConn := tls.Client(socksConn, cfg)
+	if e := tlsConn.Handshake(); e != nil {
+		socksConn.Close()
+		return nil, e
 	}
-	conn = net.Conn(tconn)
-	state := tconn.ConnectionState()
+	conn := textproto.NewConn(tlsConn)
+	state := tlsConn.ConnectionState()
 	for k, cert := range state.PeerCertificates {
 		log.Println("INFO",
 			"Chain #",
@@ -38,44 +39,39 @@ func dialFreenode() (net.Conn, error) {
 			cert.Issuer.CommonName,
 		)
 	}
-	_, e = conn.Write([]byte("CAP REQ :sasl\r\nAUTHENTICATE EXTERNAL\r\nAUTHENTICATE +\r\nCAP END\r\n"))
+	_, e = conn.Writer.W.WriteString("CAP REQ :sasl\r\nAUTHENTICATE EXTERNAL\r\nAUTHENTICATE +\r\nCAP END\r\n")
 	if e != nil {
 		log.Println("ERROR", e)
 		conn.Close()
-		return conn, e
+		return nil, e
 	}
 	return conn, nil
 }
 
-func netToChan(c chan []byte, n net.Conn) {
-	b := make([]byte, 4096)
+func netToChan(c chan string, n *textproto.Conn) {
 	for {
-		if i, e := n.Read(b[:]); e != nil {
+		if s, e := n.ReadLine(); e != nil {
 			close(c)
 			return
 		} else {
-			c <- b[:i]
+			c <- s
 		}
 	}
 }
 
-func toNet(b []byte, n net.Conn) error {
-	for i := 0; i < len(b); {
-		if t, e := n.Write(b[i:]); e != nil {
-			return e
-		} else {
-			i += t
-		}
+func toNet(s string, n *textproto.Conn) error {
+	if e := n.PrintfLine("%s", s); e != nil {
+		return e
 	}
 	return nil
 }
 
-func ferry(client, server net.Conn) {
+func ferry(client, server *textproto.Conn) {
 	defer client.Close()
 	defer server.Close()
 	defer log.Println("WARN", "Connection closed")
-	fromClient := make(chan []byte)
-	fromServer := make(chan []byte)
+	fromClient := make(chan string)
+	fromServer := make(chan string)
 	go netToChan(fromClient, client)
 	go netToChan(fromServer, server)
 	for {
@@ -101,12 +97,13 @@ func main() {
 	}
 	log.Println("INFO", "Listening on", listener.Addr().String())
 	for {
-		client, e := listener.Accept()
+		tcpClient, e := listener.Accept()
 		if e != nil {
 			log.Println("ERROR", e)
 			continue
 		}
-		log.Println("INFO", "Connection from", client.RemoteAddr().String())
+		log.Println("INFO", "Connection from", tcpClient.RemoteAddr().String())
+		client := textproto.NewConn(tcpClient)
 		server, e := dialFreenode()
 		if e != nil {
 			log.Println("ERROR", e)
